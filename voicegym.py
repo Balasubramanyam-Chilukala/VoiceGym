@@ -33,7 +33,12 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Initialize pygame mixer for audio playback
-pygame.mixer.init()
+try:
+    pygame.mixer.init()
+    print("✅ Audio system initialized!")
+except Exception as e:
+    print(f"⚠️  Audio initialization failed: {e}")
+    print("📢 VoiceGym will continue without audio feedback")
 
 print("✅ API Keys configured!")
 
@@ -41,9 +46,97 @@ print("✅ API Keys configured!")
 # CAMERA AND AUDIO FUNCTIONS
 # ==============================================================================
 
+def detect_available_cameras():
+    """Detect all available camera devices."""
+    available_cameras = []
+    print("🔍 Detecting available cameras...")
+    
+    for i in range(10):  # Check first 10 camera indices
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                # Get camera properties
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                camera_info = {
+                    'index': i,
+                    'width': width,
+                    'height': height,
+                    'fps': fps,
+                    'working': True
+                }
+                available_cameras.append(camera_info)
+                print(f"📷 Camera {i}: {width}x{height} @ {fps:.1f}fps")
+            else:
+                print(f"⚠️  Camera {i}: Detected but cannot capture frames")
+        cap.release()
+    
+    if not available_cameras:
+        print("❌ No working cameras detected!")
+    else:
+        print(f"✅ Found {len(available_cameras)} working camera(s)")
+    
+    return available_cameras
+
+def test_camera(camera_index, duration=3):
+    """Test a specific camera for a few seconds."""
+    print(f"🧪 Testing camera {camera_index} for {duration} seconds...")
+    
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        print(f"❌ Cannot open camera {camera_index}")
+        return False
+    
+    # Set camera properties
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    
+    start_time = time.time()
+    frame_count = 0
+    
+    print("Press 'q' to stop test early or wait for automatic completion...")
+    
+    while time.time() - start_time < duration:
+        ret, frame = cap.read()
+        if not ret:
+            print(f"❌ Failed to capture frame from camera {camera_index}")
+            cap.release()
+            cv2.destroyAllWindows()
+            return False
+        
+        frame_count += 1
+        frame = cv2.flip(frame, 1)  # Mirror effect
+        
+        # Add test overlay
+        cv2.putText(frame, f'Camera {camera_index} Test', (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, f'Frame: {frame_count}', (10, 70), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, f'Press Q to stop', (10, 110), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        
+        cv2.imshow(f'Camera {camera_index} Test - Press Q to Stop', frame)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q') or key == 27:  # 'q' or ESC
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    
+    print(f"✅ Camera {camera_index} test completed - captured {frame_count} frames")
+    return True
+
 def play_audio(filename):
     """Play audio file using pygame."""
     try:
+        if not pygame.mixer.get_init():
+            print("🔇 Audio not available - skipping audio playback")
+            return False
+            
         pygame.mixer.music.load(filename)
         pygame.mixer.music.play()
         print(f"🎵 Playing audio: {filename}")
@@ -54,9 +147,12 @@ def play_audio(filename):
 
 def play_audio_async(filename):
     """Play audio in a separate thread to avoid blocking."""
-    thread = Thread(target=play_audio, args=(filename,))
-    thread.daemon = True
-    thread.start()
+    try:
+        thread = Thread(target=play_audio, args=(filename,))
+        thread.daemon = True
+        thread.start()
+    except Exception as e:
+        print(f"Async audio error: {e}")
 
 # ==============================================================================
 # POSE PROCESSING
@@ -185,17 +281,121 @@ class VoiceGymLocal:
         self.last_rep = 0
         self.last_speech = 0
         
-        # Initialize camera
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            print("❌ Cannot open camera!")
-            raise SystemExit()
-            
-        # Set camera properties
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Camera will be initialized separately
+        self.cap = None
+        self.camera_index = None
+        self.available_cameras = []
+        from threading import Lock
+        self._camera_lock = Lock()  # For thread synchronization
         
-        print("✅ Camera initialized!")
+        print("✅ VoiceGym initialized (camera not yet connected)")
+    
+    def detect_cameras(self):
+        """Detect and return available cameras."""
+        self.available_cameras = detect_available_cameras()
+        return self.available_cameras
+    
+    def initialize_camera(self, camera_index=None):
+        """Initialize camera with proper error handling and fallbacks."""
+        with self._camera_lock:  # Thread synchronization
+            if self.cap is not None:
+                self.cleanup_camera()
+            
+            # If no specific camera requested, try to find the best one
+            if camera_index is None:
+                if not self.available_cameras:
+                    self.available_cameras = self.detect_cameras()
+                
+                if not self.available_cameras:
+                    print("❌ No cameras available for initialization!")
+                    return False
+                
+                # Use the first available camera
+                camera_index = self.available_cameras[0]['index']
+                print(f"🎯 Auto-selecting camera {camera_index}")
+            
+            print(f"🔧 Initializing camera {camera_index}...")
+            
+            try:
+                self.cap = cv2.VideoCapture(camera_index)
+                if not self.cap.isOpened():
+                    print(f"❌ Cannot open camera {camera_index}")
+                    return False
+                
+                # Test if we can actually capture frames
+                ret, test_frame = self.cap.read()
+                if not ret or test_frame is None:
+                    print(f"❌ Camera {camera_index} opened but cannot capture frames")
+                    self.cap.release()
+                    self.cap = None
+                    return False
+                
+                # Set camera properties
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                
+                # Verify settings
+                actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                
+                self.camera_index = camera_index
+                print(f"✅ Camera {camera_index} initialized successfully!")
+                print(f"📐 Resolution: {actual_width}x{actual_height}")
+                return True
+                
+            except Exception as e:
+                print(f"❌ Error initializing camera {camera_index}: {e}")
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
+                return False
+    
+    def try_fallback_cameras(self):
+        """Try to initialize any available camera as fallback."""
+        print("🔄 Trying fallback cameras...")
+        
+        if not self.available_cameras:
+            self.available_cameras = self.detect_cameras()
+        
+        for camera_info in self.available_cameras:
+            camera_index = camera_info['index']
+            if camera_index != self.camera_index:  # Don't retry the same camera
+                print(f"🔄 Attempting fallback to camera {camera_index}")
+                if self.initialize_camera(camera_index):
+                    return True
+        
+        print("❌ All fallback cameras failed")
+        return False
+    
+    def test_current_camera(self, duration=3):
+        """Test the currently initialized camera."""
+        if self.cap is None:
+            print("❌ No camera initialized for testing")
+            return False
+        
+        return test_camera(self.camera_index, duration)
+    
+    def cleanup_camera(self):
+        """Properly cleanup camera resources."""
+        with self._camera_lock:  # Thread synchronization
+            if self.cap is not None:
+                print(f"🧹 Cleaning up camera {self.camera_index}")
+                self.cap.release()
+                self.cap = None
+                self.camera_index = None
+    
+    def is_camera_ready(self):
+        """Check if camera is ready for use."""
+        with self._camera_lock:  # Thread synchronization
+            if self.cap is None:
+                return False
+            
+            if not self.cap.isOpened():
+                return False
+            
+            # Quick frame capture test
+            ret, frame = self.cap.read()
+            return ret and frame is not None
         
     def process_frame(self, frame):
         """Process video frame for pose detection."""
@@ -286,9 +486,134 @@ class VoiceGymLocal:
         
         return frame
     
+    def setup_camera_interactive(self):
+        """Interactive camera setup with user choices."""
+        print("\n🎥 CAMERA SETUP")
+        print("=" * 50)
+        
+        # Detect cameras
+        cameras = self.detect_cameras()
+        
+        if not cameras:
+            print("❌ No cameras detected! Please check your camera connections.")
+            print("💡 Make sure:")
+            print("   - Camera is properly connected")
+            print("   - Camera drivers are installed")
+            print("   - No other applications are using the camera")
+            return False
+        
+        # If only one camera, use it automatically
+        if len(cameras) == 1:
+            camera_index = cameras[0]['index']
+            print(f"📷 Found 1 camera, automatically selecting camera {camera_index}")
+            
+            if self.initialize_camera(camera_index):
+                print("✅ Camera ready!")
+                return True
+            else:
+                print("❌ Failed to initialize the only available camera")
+                return False
+        
+        # Multiple cameras - let user choose
+        print(f"📷 Found {len(cameras)} cameras:")
+        for i, cam in enumerate(cameras):
+            print(f"   {i+1}. Camera {cam['index']}: {cam['width']}x{cam['height']} @ {cam['fps']:.1f}fps")
+        
+        while True:
+            try:
+                choice = input(f"\n🎯 Select camera (1-{len(cameras)}) or 'q' to quit: ").strip().lower()
+                
+                if choice == 'q':
+                    return False
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(cameras):
+                    selected_camera = cameras[choice_num - 1]
+                    camera_index = selected_camera['index']
+                    
+                    if self.initialize_camera(camera_index):
+                        return True
+                    else:
+                        print(f"❌ Failed to initialize camera {camera_index}")
+                        print("🔄 Please try another camera")
+                        continue
+                else:
+                    print(f"❌ Please enter a number between 1 and {len(cameras)}")
+                    
+            except ValueError:
+                print("❌ Please enter a valid number or 'q' to quit")
+            except KeyboardInterrupt:
+                print("\n👋 Setup cancelled by user")
+                return False
+    
+    def camera_test_menu(self):
+        """Camera testing menu."""
+        if not self.is_camera_ready():
+            print("❌ No camera initialized for testing")
+            return False
+        
+        print(f"\n🧪 CAMERA TEST (Camera {self.camera_index})")
+        print("=" * 50)
+        
+        while True:
+            print(f"\nOptions:")
+            print("1. Quick test (3 seconds)")
+            print("2. Extended test (10 seconds)")
+            print("3. Skip test and start workout")
+            print("4. Return to camera setup")
+            
+            try:
+                choice = input("Select option (1-4): ").strip()
+                
+                if choice == '1':
+                    if self.test_current_camera(3):
+                        print("✅ Quick test passed!")
+                        return True
+                    else:
+                        print("❌ Camera test failed")
+                        
+                elif choice == '2':
+                    if self.test_current_camera(10):
+                        print("✅ Extended test passed!")
+                        return True
+                    else:
+                        print("❌ Camera test failed")
+                        
+                elif choice == '3':
+                    print("⏭️  Skipping camera test")
+                    return True
+                    
+                elif choice == '4':
+                    return False
+                    
+                else:
+                    print("❌ Please enter 1, 2, 3, or 4")
+                    
+            except KeyboardInterrupt:
+                print("\n👋 Test cancelled by user")
+                return False
+
     def run(self):
-        """Main workout loop."""
-        print("🎥 Starting VoiceGym...")
+        """Main workout loop with improved camera setup."""
+        print("🏋️ VoiceGym Coach - Enhanced Version")
+        print("=" * 60)
+        
+        # Interactive camera setup
+        while True:
+            if self.setup_camera_interactive():
+                # Camera initialized successfully
+                if self.camera_test_menu():
+                    break  # User approved camera, continue to workout
+                else:
+                    # User wants to change camera
+                    self.cleanup_camera()
+                    continue
+            else:
+                # No camera available or user quit
+                print("👋 Exiting VoiceGym - camera setup incomplete")
+                return
+        
+        print("\n🎥 Starting VoiceGym workout...")
         print("🏋️ Position yourself in front of the camera and start doing bicep curls!")
         print("📱 Press 'q' to quit or ESC to exit")
         print("=" * 60)
@@ -302,11 +627,23 @@ class VoiceGymLocal:
         speak_feedback(initial_message)
         
         while True:
+            # Check camera health
+            if not self.is_camera_ready():
+                print("⚠️  Camera connection lost! Attempting recovery...")
+                if not self.try_fallback_cameras():
+                    print("❌ Cannot recover camera connection. Ending workout.")
+                    break
+                print("✅ Camera recovered! Continuing workout...")
+            
             ret, frame = self.cap.read()
             
             if not ret:
                 print("❌ Failed to grab frame from camera")
-                break
+                print("🔄 Attempting camera recovery...")
+                if not self.try_fallback_cameras():
+                    print("❌ Camera recovery failed. Ending workout.")
+                    break
+                continue
             
             # Flip frame horizontally for mirror effect
             frame = cv2.flip(frame, 1)
@@ -335,9 +672,12 @@ class VoiceGymLocal:
                 break
         
         # Cleanup
-        self.cap.release()
+        self.cleanup_camera()
         cv2.destroyAllWindows()
-        pygame.mixer.quit()
+        try:
+            pygame.mixer.quit()
+        except:
+            pass  # Audio might not be initialized
         
         # Final workout summary
         elapsed = time.time() - start_time
@@ -390,6 +730,7 @@ def get_coaching_tip(angle, reps):
 # MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
+    gym = None
     try:
         print("🚀 Starting VoiceGym Coach...")
         print("=" * 60)
@@ -404,6 +745,11 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
     finally:
+        if gym:
+            gym.cleanup_camera()
         cv2.destroyAllWindows()
-        pygame.mixer.quit()
+        try:
+            pygame.mixer.quit()
+        except:
+            pass  # Audio might not be initialized
         print("🏁 VoiceGym Coach session ended!")
