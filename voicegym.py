@@ -8,7 +8,7 @@ import google.generativeai as genai
 import pygame
 import os
 import random
-from threading import Thread
+from threading import Thread, Lock
 import tempfile
 from dotenv import load_dotenv
 load_dotenv()
@@ -46,13 +46,107 @@ print("✅ API Keys configured!")
 # CAMERA AND AUDIO FUNCTIONS
 # ==============================================================================
 
+# ==============================================================================
+# CAMERA AND AUDIO FUNCTIONS
+# ==============================================================================
+
+# Demo mode for testing without physical cameras
+DEMO_MODE = os.getenv("VOICEGYM_DEMO_MODE", "false").lower() == "true"
+
+class MockVideoCapture:
+    """Mock camera for demo/testing purposes."""
+    def __init__(self, index):
+        self.index = index
+        self.opened = True
+        self.width = 640
+        self.height = 480
+        self.fps = 30.0
+        
+    def isOpened(self):
+        return self.opened
+    
+    def read(self):
+        if not self.opened:
+            return False, None
+        
+        # Create a simple test frame with moving elements
+        frame = np.ones((self.height, self.width, 3), dtype=np.uint8) * 50
+        
+        # Add some visual elements to simulate a person
+        current_time = time.time()
+        
+        # Moving circle to simulate person movement
+        cx = int(self.width * 0.5 + 100 * np.sin(current_time * 0.5))
+        cy = int(self.height * 0.5)
+        cv2.circle(frame, (cx, cy), 30, (0, 255, 0), -1)
+        
+        # Add text overlay
+        cv2.putText(frame, f'DEMO CAMERA {self.index}', (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, 'Simulated Feed', (10, 70), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
+        return True, frame
+    
+    def set(self, prop, value):
+        if prop == cv2.CAP_PROP_FRAME_WIDTH:
+            self.width = int(value)
+        elif prop == cv2.CAP_PROP_FRAME_HEIGHT:
+            self.height = int(value)
+        return True
+    
+    def get(self, prop):
+        if prop == cv2.CAP_PROP_FRAME_WIDTH:
+            return self.width
+        elif prop == cv2.CAP_PROP_FRAME_HEIGHT:
+            return self.height
+        elif prop == cv2.CAP_PROP_FPS:
+            return self.fps
+        return 0
+    
+    def release(self):
+        self.opened = False
+
+def create_video_capture(index):
+    """Create VideoCapture with demo mode support."""
+    if DEMO_MODE:
+        # In demo mode, only allow cameras 0 and 1
+        if index < 2:
+            print(f"📷 Creating mock camera {index} (DEMO MODE)")
+            return MockVideoCapture(index)
+        else:
+            print(f"📷 Mock camera {index} not available (DEMO MODE)")
+            # Return a VideoCapture that will fail to open
+            mock_cap = MockVideoCapture(index)
+            mock_cap.opened = False
+            return mock_cap
+    else:
+        return cv2.VideoCapture(index)
+
 def detect_available_cameras():
     """Detect all available camera devices."""
     available_cameras = []
     print("🔍 Detecting available cameras...")
     
+    if DEMO_MODE:
+        print("🎭 Running in DEMO MODE - simulating cameras")
+        # Simulate 2 demo cameras
+        for i in range(2):
+            camera_info = {
+                'index': i,
+                'width': 640,
+                'height': 480,
+                'fps': 30.0,
+                'working': True
+            }
+            available_cameras.append(camera_info)
+            print(f"📷 Demo Camera {i}: 640x480 @ 30.0fps")
+        
+        print(f"✅ Found {len(available_cameras)} demo camera(s)")
+        return available_cameras
+    
     for i in range(10):  # Check first 10 camera indices
-        cap = cv2.VideoCapture(i)
+        cap = create_video_capture(i)
         if cap.isOpened():
             ret, frame = cap.read()
             if ret and frame is not None:
@@ -81,11 +175,11 @@ def detect_available_cameras():
     
     return available_cameras
 
-def test_camera(camera_index, duration=3):
+def test_camera(camera_index, duration=3, headless=False):
     """Test a specific camera for a few seconds."""
     print(f"🧪 Testing camera {camera_index} for {duration} seconds...")
     
-    cap = cv2.VideoCapture(camera_index)
+    cap = create_video_capture(camera_index)
     if not cap.isOpened():
         print(f"❌ Cannot open camera {camera_index}")
         return False
@@ -97,35 +191,58 @@ def test_camera(camera_index, duration=3):
     start_time = time.time()
     frame_count = 0
     
-    print("Press 'q' to stop test early or wait for automatic completion...")
+    if not headless:
+        print("Press 'q' to stop test early or wait for automatic completion...")
+    else:
+        print("Running headless camera test...")
     
     while time.time() - start_time < duration:
         ret, frame = cap.read()
         if not ret:
             print(f"❌ Failed to capture frame from camera {camera_index}")
             cap.release()
-            cv2.destroyAllWindows()
+            if not headless:
+                cv2.destroyAllWindows()
             return False
         
         frame_count += 1
-        frame = cv2.flip(frame, 1)  # Mirror effect
         
-        # Add test overlay
-        cv2.putText(frame, f'Camera {camera_index} Test', (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(frame, f'Frame: {frame_count}', (10, 70), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, f'Press Q to stop', (10, 110), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        
-        cv2.imshow(f'Camera {camera_index} Test - Press Q to Stop', frame)
-        
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q') or key == 27:  # 'q' or ESC
-            break
+        if not headless:
+            frame = cv2.flip(frame, 1)  # Mirror effect
+            
+            # Add test overlay
+            test_type = "DEMO TEST" if DEMO_MODE else "CAMERA TEST"
+            cv2.putText(frame, f'{test_type} - Camera {camera_index}', (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.putText(frame, f'Frame: {frame_count}', (10, 70), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(frame, f'Press Q to stop', (10, 110), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+            
+            if DEMO_MODE:
+                cv2.putText(frame, 'DEMO MODE ACTIVE', (10, 150), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            try:
+                cv2.imshow(f'Camera {camera_index} Test - Press Q to Stop', frame)
+                
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q') or key == 27:  # 'q' or ESC
+                    break
+            except cv2.error as e:
+                print(f"Display error (running headless): {e}")
+                headless = True  # Switch to headless mode
+                continue
+        else:
+            # Headless mode - just check that frames are coming
+            if frame_count % 100 == 0 and frame_count > 0:  # Progress update every 100 frames
+                elapsed = time.time() - start_time
+                fps = frame_count / elapsed if elapsed > 0 else 0
+                print(f"   Captured {frame_count} frames at {fps:.1f} fps...")
     
     cap.release()
-    cv2.destroyAllWindows()
+    if not headless:
+        cv2.destroyAllWindows()
     
     print(f"✅ Camera {camera_index} test completed - captured {frame_count} frames")
     return True
@@ -317,7 +434,7 @@ class VoiceGymLocal:
             print(f"🔧 Initializing camera {camera_index}...")
             
             try:
-                self.cap = cv2.VideoCapture(camera_index)
+                self.cap = create_video_capture(camera_index)
                 if not self.cap.isOpened():
                     print(f"❌ Cannot open camera {camera_index}")
                     return False
@@ -373,7 +490,9 @@ class VoiceGymLocal:
             print("❌ No camera initialized for testing")
             return False
         
-        return test_camera(self.camera_index, duration)
+        # Check if we're in a headless environment
+        headless = os.getenv("DISPLAY") is None or os.getenv("VOICEGYM_HEADLESS", "false").lower() == "true"
+        return test_camera(self.camera_index, duration, headless)
     
     def cleanup_camera(self):
         """Properly cleanup camera resources."""
@@ -489,17 +608,23 @@ class VoiceGymLocal:
     def setup_camera_interactive(self):
         """Interactive camera setup with user choices."""
         print("\n🎥 CAMERA SETUP")
+        if DEMO_MODE:
+            print("🎭 RUNNING IN DEMO MODE - Using simulated cameras")
         print("=" * 50)
         
         # Detect cameras
         cameras = self.detect_cameras()
         
         if not cameras:
-            print("❌ No cameras detected! Please check your camera connections.")
-            print("💡 Make sure:")
-            print("   - Camera is properly connected")
-            print("   - Camera drivers are installed")
-            print("   - No other applications are using the camera")
+            if DEMO_MODE:
+                print("❌ Demo mode failed to create mock cameras!")
+            else:
+                print("❌ No cameras detected! Please check your camera connections.")
+                print("💡 Make sure:")
+                print("   - Camera is properly connected")
+                print("   - Camera drivers are installed")
+                print("   - No other applications are using the camera")
+                print("🎭 TIP: Set VOICEGYM_DEMO_MODE=true to test with simulated cameras")
             return False
         
         # If only one camera, use it automatically
