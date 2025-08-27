@@ -1,0 +1,12 @@
+streamlit>=1.28.0
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+numpy>=1.24.0
+requests>=2.31.0
+google-generativeai>=0.3.0
+pygame>=2.5.0
+python-dotenv>=1.0.0
+asyncio
+aiohttp>=3.8.0
+plotly>=5.0.0
+pandas>=1.4.0
