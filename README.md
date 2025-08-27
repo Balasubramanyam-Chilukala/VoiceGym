@@ -5,6 +5,27 @@
 
 This project turns your webcam into an intelligent personal trainer that focuses on a single exercise (bicep curls) to provide a complete, interactive feedback loop. It demonstrates the future of accessible, AI-driven home fitness without needing a web server.
 
+## 🆕 Recent Enhancements
+
+### Voice Feedback Improvements
+- **🔊 Enhanced Voice Synthesis**: Primary Murf API with automatic gTTS fallback
+- **🛡️ Audio Error Handling**: Graceful handling of missing audio devices
+- **🔇 Silent Mode Support**: System continues to work without audio hardware
+- **📊 Clear Status Reporting**: Comprehensive logging for troubleshooting
+
+### Streamlit Camera Integration
+- **🖥️ Web Interface**: Modern Streamlit UI for easy interaction
+- **📷 Camera Selection**: Dropdown to choose from available cameras
+- **👁️ Camera Preview**: Preview functionality before starting workout
+- **🎛️ Advanced Controls**: Audio testing, voice synthesis testing, workout reset
+- **📱 Real-time Stats**: Live display of reps, stages, and system status
+
+### Robust Error Handling
+- **🛡️ Graceful Degradation**: System works even when components fail
+- **📝 Comprehensive Logging**: Clear error messages and status updates
+- **🔄 Automatic Fallbacks**: Multiple backup options for voice and camera
+- **⚠️ User Feedback**: Clear indication of system capabilities and limitations
+
 
 ## 🌟 Key Features
 
@@ -55,7 +76,7 @@ You will need the following software installed:
 3.  **Install Required Libraries:**
     With your environment active, install all the necessary packages with `pip`.
     ```bash
-    pip install opencv-python mediapipe numpy requests pygame python-dotenv google-generativeai
+    pip install opencv-python mediapipe numpy requests pygame python-dotenv google-generativeai gtts streamlit
     ```
 
 ### 🔑 Configuration
@@ -76,10 +97,32 @@ To use the AI voice and feedback features, you must configure your API keys.
 
 ## ▶️ How to Run
 
-1.  Ensure your virtual environment is active (e.g., `conda activate voicegym-env`).
-2.  Run the application from your terminal:
-    ```bash
-    python your_script_name.py
-    ```
-3.  A window will open with your webcam feed. Position yourself so the camera can see you and begin performing bicep curls.
-4.  To stop the program, make sure the webcam window is active and press the **'q'** key or the **ESC** key.
+### Option 1: Traditional OpenCV Interface
+1. Ensure your virtual environment is active (e.g., `conda activate voicegym-env`).
+2. Run the application from your terminal:
+   ```bash
+   python voicegym.py
+   ```
+3. A window will open with your webcam feed. Position yourself so the camera can see you and begin performing bicep curls.
+4. To stop the program, make sure the webcam window is active and press the **'q'** key or the **ESC** key.
+
+### Option 2: Streamlit Web Interface (Recommended)
+1. Ensure your virtual environment is active.
+2. Run the Streamlit application:
+   ```bash
+   streamlit run streamlit_app.py
+   ```
+3. Your web browser will open with the VoiceGym interface.
+4. Select your camera, test audio, and start your workout!
+
+### 🔧 Troubleshooting
+- **No audio**: The system will run in silent mode with text feedback
+- **No camera**: Clear error messages will guide you to check connections
+- **API issues**: Automatic fallback to alternative voice synthesis
+- **Network issues**: Most features work offline
+
+### 🧪 Testing the System
+Run the demo script to see all enhanced features:
+```bash
+python demo.py
+```
