@@ -11,8 +11,14 @@ import random
 from threading import Thread
 import tempfile
 from dotenv import load_dotenv
+import logging
+from gtts import gTTS
 load_dotenv()
 print("🏋️ VoiceGym Coach - Local Machine Version Loading...")
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # SETUP
@@ -23,37 +29,98 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Replace with your actual key
 MURF_API_KEY = os.getenv("MURF_API_KEY")      # Replace with your actual key
 
 # Validate API keys
-if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE" or MURF_API_KEY == "YOUR_MURF_API_KEY_HERE":
-    print("❌ Please add your actual API keys to the script!")
-    print("   - Get Gemini API key from: https://makersuite.google.com/app/apikey")
-    print("   - Get Murf API key from: https://murf.ai/api")
-    raise SystemExit()
+if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+    logger.warning("⚠️ Gemini API key not configured. AI feedback will be limited.")
+else:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        logger.info("✅ Gemini API configured successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to configure Gemini API: {e}")
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+if not MURF_API_KEY or MURF_API_KEY == "YOUR_MURF_API_KEY_HERE":
+    logger.warning("⚠️ Murf API key not configured. Will use gTTS fallback for voice synthesis.")
 
-# Initialize pygame mixer for audio playback
-pygame.mixer.init()
+# Initialize pygame mixer for audio playback with error handling
+AUDIO_AVAILABLE = False
+try:
+    # Try to initialize pygame mixer
+    pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=512)
+    pygame.mixer.init()
+    AUDIO_AVAILABLE = True
+    logger.info("✅ Audio system initialized successfully")
+except pygame.error as e:
+    logger.warning(f"⚠️ Audio device initialization failed: {e}")
+    logger.info("🔇 Running in silent mode - voice feedback disabled")
+except Exception as e:
+    logger.warning(f"⚠️ Unexpected audio initialization error: {e}")
+    logger.info("🔇 Running in silent mode - voice feedback disabled")
 
-print("✅ API Keys configured!")
+print("✅ System initialized!")
 
 # ==============================================================================
 # CAMERA AND AUDIO FUNCTIONS
 # ==============================================================================
 
+def test_audio():
+    """Test audio system functionality."""
+    if not AUDIO_AVAILABLE:
+        logger.warning("🔇 Audio system not available for testing")
+        return False
+    
+    try:
+        # Generate a simple test beep
+        test_text = "Audio test successful"
+        logger.info("🔊 Testing audio with gTTS...")
+        
+        # Use gTTS for testing
+        tts = gTTS(text=test_text, lang='en')
+        temp_dir = tempfile.gettempdir()
+        test_file = os.path.join(temp_dir, f"audio_test_{int(time.time())}.mp3")
+        tts.save(test_file)
+        
+        # Test playback
+        result = play_audio(test_file)
+        
+        # Cleanup
+        try:
+            os.remove(test_file)
+        except:
+            pass
+            
+        if result:
+            logger.info("✅ Audio test completed successfully")
+        else:
+            logger.warning("⚠️ Audio test failed during playback")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Audio test failed: {e}")
+        return False
+
 def play_audio(filename):
     """Play audio file using pygame."""
+    if not AUDIO_AVAILABLE:
+        logger.warning("🔇 Audio playback skipped - no audio device available")
+        return False
+        
     try:
         pygame.mixer.music.load(filename)
         pygame.mixer.music.play()
-        print(f"🎵 Playing audio: {filename}")
+        logger.info(f"🎵 Playing audio: {os.path.basename(filename)}")
         return True
     except Exception as e:
-        print(f"Audio playback error: {e}")
+        logger.error(f"❌ Audio playback error: {e}")
         return False
 
 def play_audio_async(filename):
     """Play audio in a separate thread to avoid blocking."""
+    if not AUDIO_AVAILABLE:
+        logger.warning("🔇 Audio playback skipped - no audio device available")
+        return
+        
     thread = Thread(target=play_audio, args=(filename,))
     thread.daemon = True
     thread.start()
@@ -69,64 +136,89 @@ def calculate_angle(a, b, c):
     return 360 - angle if angle > 180 else angle
 
 def speak_feedback(text):
-    """Text to speech via Murf API."""
-    try:
-        # Correct Murf API payload structure
-        payload = {
-            "text": text,
-            "voiceId": "en-US-terrell",
-            "format": "MP3",
-            "model": "GEN2",
-            "returnAsBase64": False
-        }
-        
-        headers = {
-            "api-key": MURF_API_KEY,
-            "Content-Type": "application/json"
-        }
-        
-        print(f"🔊 Generating speech: '{text[:50]}...'")
-        
-        response = requests.post(
-            "https://api.murf.ai/v1/speech/generate",
-            headers=headers,
-            json=payload,
-            timeout=15
-        )
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            audio_length = response_data.get('audioLengthInSeconds', 0)
-            print(f"📊 Audio Length: {audio_length} seconds")
-            
-            if 'audioFile' in response_data:
-                audio_url = response_data['audioFile']
-                print(f"🔗 Downloading audio...")
-                
-                audio_response = requests.get(audio_url, timeout=15)
-                if audio_response.status_code == 200:
-                    # Create temporary file
-                    temp_dir = tempfile.gettempdir()
-                    audio_filename = os.path.join(temp_dir, f"voicegym_{int(time.time())}.mp3")
-                    
-                    with open(audio_filename, "wb") as f:
-                        f.write(audio_response.content)
-                    
-                    file_size = len(audio_response.content)
-                    print(f"✅ Audio saved: {file_size} bytes")
-                    
-                    # Play audio asynchronously
-                    play_audio_async(audio_filename)
-                    return True
-                else:
-                    print(f"❌ Failed to download audio: {audio_response.status_code}")
-                    
-        else:
-            print(f"❌ Murf API Error {response.status_code}: {response.text}")
-            
-    except Exception as e:
-        print(f"💥 Speech error: {e}")
+    """Text to speech with Murf API primary and gTTS fallback."""
+    if not AUDIO_AVAILABLE:
+        logger.info(f"🔇 Voice feedback (silent): {text[:50]}...")
+        return False
     
+    # Try Murf API first if available
+    if MURF_API_KEY and MURF_API_KEY != "YOUR_MURF_API_KEY_HERE":
+        try:
+            logger.info(f"🔊 Generating speech with Murf API: '{text[:50]}...'")
+            
+            # Correct Murf API payload structure
+            payload = {
+                "text": text,
+                "voiceId": "en-US-terrell",
+                "format": "MP3",
+                "model": "GEN2",
+                "returnAsBase64": False
+            }
+            
+            headers = {
+                "api-key": MURF_API_KEY,
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                "https://api.murf.ai/v1/speech/generate",
+                headers=headers,
+                json=payload,
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                audio_length = response_data.get('audioLengthInSeconds', 0)
+                logger.info(f"📊 Murf Audio Length: {audio_length} seconds")
+                
+                if 'audioFile' in response_data:
+                    audio_url = response_data['audioFile']
+                    logger.info("🔗 Downloading Murf audio...")
+                    
+                    audio_response = requests.get(audio_url, timeout=15)
+                    if audio_response.status_code == 200:
+                        # Create temporary file
+                        temp_dir = tempfile.gettempdir()
+                        audio_filename = os.path.join(temp_dir, f"voicegym_murf_{int(time.time())}.mp3")
+                        
+                        with open(audio_filename, "wb") as f:
+                            f.write(audio_response.content)
+                        
+                        file_size = len(audio_response.content)
+                        logger.info(f"✅ Murf audio saved: {file_size} bytes")
+                        
+                        # Play audio asynchronously
+                        play_audio_async(audio_filename)
+                        return True
+                    else:
+                        logger.warning(f"⚠️ Failed to download Murf audio: {audio_response.status_code}")
+                        
+            else:
+                logger.warning(f"⚠️ Murf API Error {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Murf API error: {e}")
+    
+    # Fallback to gTTS
+    try:
+        logger.info(f"🔊 Generating speech with gTTS fallback: '{text[:50]}...'")
+        
+        tts = gTTS(text=text, lang='en')
+        temp_dir = tempfile.gettempdir()
+        audio_filename = os.path.join(temp_dir, f"voicegym_gtts_{int(time.time())}.mp3")
+        
+        tts.save(audio_filename)
+        logger.info("✅ gTTS audio generated successfully")
+        
+        # Play audio asynchronously
+        play_audio_async(audio_filename)
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ gTTS fallback error: {e}")
+    
+    logger.error("❌ All voice synthesis methods failed")
     return False
 
 def get_coaching_tip(angle, reps):
@@ -171,7 +263,7 @@ def get_coaching_tip(angle, reps):
 # MAIN GYM CLASS
 # ==============================================================================
 class VoiceGymLocal:
-    def __init__(self):
+    def __init__(self, camera_index=0):
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
@@ -184,18 +276,62 @@ class VoiceGymLocal:
         self.last_feedback = 0
         self.last_rep = 0
         self.last_speech = 0
+        self.camera_index = camera_index
+        self.cap = None
         
-        # Initialize camera
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            print("❌ Cannot open camera!")
-            raise SystemExit()
+        # Initialize camera with better error handling
+        self.init_camera()
+        
+    def init_camera(self):
+        """Initialize camera with proper error handling."""
+        try:
+            logger.info(f"🎥 Initializing camera {self.camera_index}...")
+            self.cap = cv2.VideoCapture(self.camera_index)
             
-        # Set camera properties
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        print("✅ Camera initialized!")
+            if not self.cap.isOpened():
+                # Try alternative camera indices
+                for alt_index in [1, 2, -1]:
+                    logger.warning(f"⚠️ Camera {self.camera_index} failed, trying camera {alt_index}")
+                    self.cap = cv2.VideoCapture(alt_index)
+                    if self.cap.isOpened():
+                        self.camera_index = alt_index
+                        break
+                        
+                if not self.cap.isOpened():
+                    logger.error("❌ Cannot open any camera!")
+                    raise SystemExit("No camera available")
+                    
+            # Set camera properties
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            
+            # Test camera by grabbing a frame
+            ret, frame = self.cap.read()
+            if not ret:
+                logger.error("❌ Cannot read from camera!")
+                raise SystemExit("Camera not working")
+                
+            logger.info(f"✅ Camera {self.camera_index} initialized successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Camera initialization failed: {e}")
+            raise
+    
+    def release_camera(self):
+        """Properly release camera resources."""
+        if self.cap:
+            self.cap.release()
+            logger.info("📹 Camera released")
+    
+    def get_available_cameras(self):
+        """Get list of available camera indices."""
+        available_cameras = []
+        for i in range(5):  # Check first 5 camera indices
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                available_cameras.append(i)
+                cap.release()
+        return available_cameras
         
     def process_frame(self, frame):
         """Process video frame for pose detection."""
@@ -335,14 +471,15 @@ class VoiceGymLocal:
                 break
         
         # Cleanup
-        self.cap.release()
+        self.release_camera()
         cv2.destroyAllWindows()
-        pygame.mixer.quit()
+        if AUDIO_AVAILABLE:
+            pygame.mixer.quit()
         
         # Final workout summary
         elapsed = time.time() - start_time
         final_message = f"Workout complete! You did {self.reps} bicep curls in {elapsed/60:.1f} minutes. Great job building strength today!"
-        print(f"🏁 {final_message}")
+        logger.info(f"🏁 {final_message}")
         speak_feedback(final_message)
         
         # Keep program alive for final speech
@@ -394,16 +531,22 @@ if __name__ == "__main__":
         print("🚀 Starting VoiceGym Coach...")
         print("=" * 60)
         
+        # Test audio system
+        if AUDIO_AVAILABLE:
+            logger.info("🔊 Testing audio system...")
+            test_audio()
+        
         gym = VoiceGymLocal()
         gym.run()
         
     except KeyboardInterrupt:
-        print("\n👋 Workout interrupted by user")
+        logger.info("\n👋 Workout interrupted by user")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
     finally:
         cv2.destroyAllWindows()
-        pygame.mixer.quit()
-        print("🏁 VoiceGym Coach session ended!")
+        if AUDIO_AVAILABLE:
+            pygame.mixer.quit()
+        logger.info("🏁 VoiceGym Coach session ended!")
