@@ -1,1 +1,42 @@
+# Environment variables
 .env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+voicegym-env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+voicegym.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Audio files (generated during runtime)
+*.mp3
+*.wav
+
+# Test coverage
+.coverage
+htmlcov/
