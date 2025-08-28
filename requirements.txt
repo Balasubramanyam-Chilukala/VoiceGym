@@ -1,0 +1,24 @@
+# Core computer vision and pose detection
+opencv-python>=4.8.0
+mediapipe>=0.10.13
+numpy>=1.24.0
+
+# Audio and text-to-speech
+pygame>=2.5.0
+gTTS>=2.5.0
+pydub>=0.25.0
+
+# AI and API integrations
+google-generativeai>=0.3.0
+requests>=2.31.0
+
+# Web interface
+streamlit>=1.29.0
+plotly>=5.17.0
+pandas>=2.1.0
+
+# Environment and configuration
+python-dotenv>=1.0.0
+
+# Utilities
+Pillow>=10.0.0
