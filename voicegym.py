@@ -1,4 +1,3 @@
-
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -7,24 +6,25 @@ import requests
 import google.generativeai as genai
 import pygame
 import os
-import random
+import json
 from threading import Thread
 import tempfile
 from dotenv import load_dotenv
+
 load_dotenv()
-print("🏋️ VoiceGym Coach - Local Machine Version Loading...")
+print("🏋️ Enhanced VoiceGym Coach - AI Powered Version Loading...")
 
 # ==============================================================================
 # SETUP
 # ==============================================================================
 
 # Add your API keys here
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Replace with your actual key
-MURF_API_KEY = os.getenv("MURF_API_KEY")      # Replace with your actual key
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MURF_API_KEY = os.getenv("MURF_API_KEY")
 
 # Validate API keys
-if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE" or MURF_API_KEY == "YOUR_MURF_API_KEY_HERE":
-    print("❌ Please add your actual API keys to the script!")
+if not GEMINI_API_KEY or not MURF_API_KEY:
+    print("❌ Please add your actual API keys to the .env file!")
     print("   - Get Gemini API key from: https://makersuite.google.com/app/apikey")
     print("   - Get Murf API key from: https://murf.ai/api")
     raise SystemExit()
@@ -32,10 +32,281 @@ if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE" or MURF_API_KEY == "YOUR_MURF_AP
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Initialize pygame mixer for audio playback
 pygame.mixer.init()
-
 print("✅ API Keys configured!")
+
+# ==============================================================================
+# VOICE AND LANGUAGE CONFIGURATION
+# ==============================================================================
+
+def get_supported_voices():
+    """Return comprehensive voice configuration with multiple languages."""
+    return {
+        "English (US)": {
+            "en-US": {
+                "Male": [
+                    {"id": "en-US-ken", "name": "Ken", "style": "Conversational", "description": "American male voice - Conversational style"},
+                    {"id": "en-US-carter", "name": "Carter", "style": "Conversational", "description": "American male voice - Multilingual (French supported)"}
+                ],
+                "Female": [
+                    {"id": "en-US-natalie", "name": "Natalie", "style": "Promo", "description": "American female voice - Promotional style"}
+                ]
+            }
+        },
+        "English (UK)": {
+            "en-UK": {
+                "Female": [
+                    {"id": "en-UK-ruby", "name": "Ruby", "style": "Conversational", "description": "British female voice - Multilingual (German supported)"}
+                ]
+            }
+        },
+        "Hindi (India)": {
+            "hi-IN": {
+                "Male": [
+                    {"id": "hi-IN-amit", "name": "Amit", "style": "General", "description": "Hindi male voice - General style"}
+                ],
+                "Female": [
+                    {"id": "hi-IN-ayushi", "name": "Ayushi", "style": "Conversational", "description": "Hindi female voice - Conversational style"}
+                ]
+            }
+        },
+        "Chinese (Mandarin)": {
+            "zh-CN": {
+                "Male": [
+                    {"id": "zh-CN-tao", "name": "Tao", "style": "Conversational", "description": "Chinese male voice - Conversational style"}
+                ],
+                "Female": [
+                    {"id": "zh-CN-jiao", "name": "Jiao", "style": "Conversational", "description": "Chinese female voice - Conversational style"}
+                ]
+            }
+        },
+        "French (France)": {
+            "fr-FR": {
+                "Female": [
+                    {"id": "fr-FR-adélie", "name": "Adélie", "style": "Conversational", "description": "French female voice - Conversational style"}
+                ]
+            }
+        },
+        "German (Germany)": {
+            "de-DE": {
+                "Male": [
+                    {"id": "de-DE-matthias", "name": "Matthias", "style": "Conversational", "description": "German male voice - Conversational style"}
+                ]
+            }
+        },
+        "Spanish (Spain)": {
+            "es-ES": {
+                "Male": [
+                    {"id": "es-ES-javier", "name": "Javier", "style": "Conversational", "description": "Spanish male voice - Conversational style"}
+                ],
+                "Female": [
+                    {"id": "es-ES-elvira", "name": "Elvira", "style": "Conversational", "description": "Spanish female voice - Conversational style"}
+                ]
+            }
+        },
+        "Italian (Italy)": {
+            "it-IT": {
+                "Male": [
+                    {"id": "it-IT-lorenzo", "name": "Lorenzo", "style": "Conversational", "description": "Italian male voice - Conversational style"}
+                ],
+                "Female": [
+                    {"id": "it-IT-greta", "name": "Greta", "style": "Conversational", "description": "Italian female voice - Conversational style"}
+                ]
+            }
+        }
+    }
+
+def fetch_available_voices():
+    """Fetch real voices from Murf API and merge with supported voices."""
+    supported_voices = get_supported_voices()
+    
+    try:
+        headers = {
+            "api-key": MURF_API_KEY,
+            "Content-Type": "application/json"
+        }
+        
+        print("📡 Fetching available voices from Murf API...")
+        response = requests.get("https://api.murf.ai/v1/speech/voices", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            voices_data = response.json()
+            api_voices = {}
+            
+            # Process API response
+            for voice in voices_data.get('voices', []):
+                language = voice.get('language', 'Unknown')
+                lang_code = voice.get('languageCode', 'unknown')
+                gender = voice.get('gender', 'Unknown')
+                voice_id = voice.get('voiceId', '')
+                name = voice.get('name', voice_id)
+                style = voice.get('style', 'General')
+                
+                # Group by language
+                if language not in api_voices:
+                    api_voices[language] = {lang_code: {"Male": [], "Female": []}}
+                if lang_code not in api_voices[language]:
+                    api_voices[language][lang_code] = {"Male": [], "Female": []}
+                
+                voice_info = {
+                    "id": voice_id,
+                    "name": name,
+                    "style": style,
+                    "description": f"{gender} voice in {language} - {style} style"
+                }
+                
+                api_voices[language][lang_code][gender].append(voice_info)
+            
+            print(f"✅ Found {len(voices_data.get('voices', []))} voices from Murf API")
+            
+            # Merge API voices with supported voices (prioritize supported ones)
+            for lang, lang_codes in supported_voices.items():
+                if lang not in api_voices:
+                    api_voices[lang] = lang_codes
+                else:
+                    for code, genders in lang_codes.items():
+                        if code not in api_voices[lang]:
+                            api_voices[lang][code] = genders
+                        else:
+                            for gender, voices in genders.items():
+                                if gender not in api_voices[lang][code]:
+                                    api_voices[lang][code][gender] = voices
+                                else:
+                                    # Add supported voices that might not be in API response
+                                    existing_ids = {v['id'] for v in api_voices[lang][code][gender]}
+                                    for voice in voices:
+                                        if voice['id'] not in existing_ids:
+                                            api_voices[lang][code][gender].append(voice)
+            
+            return api_voices
+            
+    except Exception as e:
+        print(f"❌ Error fetching voices from API: {e}")
+    
+    # Fallback to supported voices if API fails
+    print("🔄 Using supported voice configuration...")
+    return supported_voices
+
+def display_voice_menu(available_voices):
+    """Display voice selection menu organized by language and get user choice."""
+    print("\n🎤 VOICE SELECTION MENU")
+    print("=" * 70)
+    
+    voice_options = []
+    counter = 1
+    
+    # Sort languages for better display
+    language_order = [
+        "English (US)", "English (UK)", "Hindi (India)", "Chinese (Mandarin)",
+        "French (France)", "German (Germany)", "Spanish (Spain)", "Italian (Italy)"
+    ]
+    
+    # Display languages in preferred order, then any remaining
+    displayed_languages = set()
+    
+    for language in language_order:
+        if language in available_voices:
+            displayed_languages.add(language)
+            print(f"\n🌍 {language}:")
+            print("-" * 50)
+            
+            lang_codes = available_voices[language]
+            for lang_code, genders in lang_codes.items():
+                for gender, voices in genders.items():
+                    if voices:  # Only display if there are voices
+                        print(f"  👤 {gender} Voices:")
+                        for voice in voices:
+                            style_info = f" [{voice.get('style', 'General')}]" if voice.get('style') else ""
+                            print(f"     {counter}. {voice['name']}{style_info}")
+                            print(f"        └── {voice['description']}")
+                            
+                            voice_options.append({
+                                'language': language,
+                                'lang_code': lang_code,
+                                'voice_id': voice['id'],
+                                'name': voice['name'],
+                                'gender': gender,
+                                'style': voice.get('style', 'General'),
+                                'description': voice['description']
+                            })
+                            counter += 1
+    
+    # Display any remaining languages not in the preferred order
+    for language, lang_codes in available_voices.items():
+        if language not in displayed_languages:
+            print(f"\n🌍 {language}:")
+            print("-" * 50)
+            
+            for lang_code, genders in lang_codes.items():
+                for gender, voices in genders.items():
+                    if voices:
+                        print(f"  👤 {gender} Voices:")
+                        for voice in voices:
+                            style_info = f" [{voice.get('style', 'General')}]" if voice.get('style') else ""
+                            print(f"     {counter}. {voice['name']}{style_info}")
+                            print(f"        └── {voice['description']}")
+                            
+                            voice_options.append({
+                                'language': language,
+                                'lang_code': lang_code,
+                                'voice_id': voice['id'],
+                                'name': voice['name'],
+                                'gender': gender,
+                                'style': voice.get('style', 'General'),
+                                'description': voice['description']
+                            })
+                            counter += 1
+    
+    if not voice_options:
+        print("❌ No voices available. Using default configuration.")
+        return {
+            'language': 'English (US)',
+            'lang_code': 'en-US',
+            'voice_id': 'en-US-ken',
+            'name': 'Ken',
+            'gender': 'Male',
+            'style': 'Conversational',
+            'description': 'Default American male voice'
+        }
+    
+    print(f"\n💫 Enter your choice (1-{len(voice_options)}): ", end="")
+    
+    while True:
+        try:
+            choice = int(input())
+            if 1 <= choice <= len(voice_options):
+                selected_voice = voice_options[choice - 1]
+                print(f"\n✅ Selected: {selected_voice['name']} ({selected_voice['language']})")
+                print(f"   📝 Style: {selected_voice['style']}")
+                print(f"   🎭 Voice ID: {selected_voice['voice_id']}")
+                return selected_voice
+            else:
+                print(f"❌ Please enter a number between 1 and {len(voice_options)}: ", end="")
+        except ValueError:
+            print(f"❌ Please enter a valid number between 1 and {len(voice_options)}: ", end="")
+
+def get_voice_settings():
+    """Get voice and language preferences from user."""
+    print("\n🎯 Welcome to Enhanced VoiceGym Coach!")
+    print("🌍 Choose your AI fitness coach from multiple languages!")
+    print("=" * 60)
+    
+    # Fetch voices (API + supported voices)
+    available_voices = fetch_available_voices()
+    
+    print(f"\n📊 Available Languages: {len(available_voices)}")
+    for lang, codes in available_voices.items():
+        voice_count = sum(len(voices) for lang_code in codes.values() for voices in lang_code.values())
+        print(f"   🌍 {lang}: {voice_count} voices")
+    
+    voice_config = display_voice_menu(available_voices)
+    
+    print(f"\n🎊 Excellent choice! Your AI coach will be {voice_config['name']}")
+    print(f"🗣️  Language: {voice_config['language']}")
+    print(f"🎭 Style: {voice_config['style']}")
+    print("🚀 Starting your multilingual workout session...")
+    
+    return voice_config
 
 # ==============================================================================
 # CAMERA AND AUDIO FUNCTIONS
@@ -46,7 +317,7 @@ def play_audio(filename):
     try:
         pygame.mixer.music.load(filename)
         pygame.mixer.music.play()
-        print(f"🎵 Playing audio: {filename}")
+        print(f"🎵 Playing audio: {os.path.basename(filename)}")
         return True
     except Exception as e:
         print(f"Audio playback error: {e}")
@@ -68,24 +339,29 @@ def calculate_angle(a, b, c):
     angle = np.abs(radians * 180.0 / np.pi)
     return 360 - angle if angle > 180 else angle
 
-def speak_feedback(text):
-    """Text to speech via Murf API."""
+def speak_feedback(text, voice_config):
+    """Enhanced text to speech via Murf API with comprehensive voice support."""
     try:
-        # Correct Murf API payload structure
+        # Build payload with all voice parameters
         payload = {
             "text": text,
-            "voiceId": "en-US-terrell",
+            "voiceId": voice_config['voice_id'],
             "format": "MP3",
             "model": "GEN2",
-            "returnAsBase64": False
+            "returnAsBase64": False,
+            "language": voice_config['lang_code']
         }
+        
+        # Add style if available
+        if voice_config.get('style'):
+            payload["style"] = voice_config['style']
         
         headers = {
             "api-key": MURF_API_KEY,
             "Content-Type": "application/json"
         }
         
-        print(f"🔊 Generating speech: '{text[:50]}...'")
+        print(f"🔊 {voice_config['name']} ({voice_config['language']}): '{text[:50]}...'")
         
         response = requests.post(
             "https://api.murf.ai/v1/speech/generate",
@@ -97,30 +373,25 @@ def speak_feedback(text):
         if response.status_code == 200:
             response_data = response.json()
             audio_length = response_data.get('audioLengthInSeconds', 0)
-            print(f"📊 Audio Length: {audio_length} seconds")
             
             if 'audioFile' in response_data:
                 audio_url = response_data['audioFile']
-                print(f"🔗 Downloading audio...")
                 
                 audio_response = requests.get(audio_url, timeout=15)
                 if audio_response.status_code == 200:
-                    # Create temporary file
                     temp_dir = tempfile.gettempdir()
                     audio_filename = os.path.join(temp_dir, f"voicegym_{int(time.time())}.mp3")
                     
                     with open(audio_filename, "wb") as f:
                         f.write(audio_response.content)
                     
-                    file_size = len(audio_response.content)
-                    print(f"✅ Audio saved: {file_size} bytes")
-                    
-                    # Play audio asynchronously
                     play_audio_async(audio_filename)
                     return True
                 else:
                     print(f"❌ Failed to download audio: {audio_response.status_code}")
-                    
+            else:
+                print(f"❌ No audio file in response: {response_data}")
+                
         else:
             print(f"❌ Murf API Error {response.status_code}: {response.text}")
             
@@ -129,49 +400,240 @@ def speak_feedback(text):
     
     return False
 
-def get_coaching_tip(angle, reps):
-    """Get AI coaching feedback with detailed messages."""
+def get_ai_coaching_feedback(angle, reps, stage, workout_duration, voice_config, ai_quota_exceeded=False):
+    """Get dynamic AI coaching feedback with language-specific context."""
+    
+    # If AI quota exceeded, use smart fallback messages
+    if ai_quota_exceeded:
+        return get_smart_fallback_coaching(angle, reps, stage, workout_duration, voice_config)
+    
     try:
-        if angle < 30:
-            feedback_options = [
-                "Incredible contraction! You're really squeezing those biceps at the top. Keep that controlled movement going and focus on the slow descent.",
-                "Excellent squeeze at the peak! This is where the real muscle building happens. Control that negative movement for maximum gains.",
-                "Perfect form at the top! Your biceps are fully engaged right now. Remember to breathe and control the weight down slowly.",
-                "Outstanding peak contraction! You're targeting those muscle fibers perfectly. Keep that controlled tempo throughout the entire movement."
+        # Create language-aware context for Gemini
+        language_context = {
+            'en-US': 'American English with energetic, motivational tone',
+            'en-UK': 'British English with professional, encouraging tone',
+            'hi-IN': 'Hindi context with respectful, encouraging language',
+            'zh-CN': 'Chinese context with respectful, motivational approach',
+            'fr-FR': 'French context with elegant, encouraging expression',
+            'de-DE': 'German context with precise, motivational language',
+            'es-ES': 'Spanish context with warm, encouraging expression',
+            'it-IT': 'Italian context with passionate, motivational approach'
+        }
+        
+        lang_style = language_context.get(voice_config['lang_code'], 'English with motivational tone')
+        
+        context = f"""
+        You are an expert fitness coach providing real-time feedback during a bicep curl workout.
+        
+        Current workout context:
+        - Exercise: Bicep Curls
+        - Current arm angle: {angle:.1f} degrees
+        - Current stage: {stage}
+        - Total reps completed: {reps}
+        - Workout duration: {workout_duration:.1f} minutes
+        - Voice: {voice_config['name']} ({voice_config['language']})
+        - Language Style: {lang_style}
+        - Voice Style: {voice_config.get('style', 'General')}
+        
+        Angle interpretation:
+        - 0-30°: Full contraction (peak of curl)
+        - 30-50°: Strong contraction phase
+        - 50-120°: Active lifting/lowering phase
+        - 120-160°: Extension phase
+        - 160-180°: Full extension (bottom of curl)
+        
+        Provide a motivational, specific coaching tip (1-2 sentences max) that:
+        1. Is encouraging and energetic
+        2. Gives specific form advice based on current angle
+        3. Motivates continued effort
+        4. Sounds natural when spoken aloud
+        5. Is appropriate for the selected voice personality and language style
+        6. Matches the {voice_config.get('style', 'General')} style
+        
+        Keep response under 25 words for natural speech flow.
+        Respond in English (the text will be converted to the target language via TTS).
+        """
+        
+        response = model.generate_content(context)
+        
+        if response.text:
+            feedback = response.text.strip()
+            # Clean up any formatting
+            feedback = feedback.replace('*', '').replace('#', '').replace('"', '')
+            return feedback
+        else:
+            return get_smart_fallback_coaching(angle, reps, stage, workout_duration, voice_config)
+            
+    except Exception as e:
+        if "quota" in str(e).lower() or "429" in str(e):
+            print(f"⚠️  AI quota reached. Using smart fallback coaching.")
+            return get_smart_fallback_coaching(angle, reps, stage, workout_duration, voice_config)
+        else:
+            print(f"AI coaching error: {e}")
+            return get_smart_fallback_coaching(angle, reps, stage, workout_duration, voice_config)
+
+def get_smart_fallback_coaching(angle, reps, stage, workout_duration, voice_config):
+    """Smart fallback coaching messages with language awareness."""
+    import random
+    
+    # Language-specific motivational phrases
+    language_phrases = {
+        'en-US': {
+            'excellent': ['Excellent', 'Outstanding', 'Perfect', 'Great'],
+            'keep_going': ['Keep going', 'Stay strong', 'Push forward', 'Keep it up'],
+            'control': ['controlled', 'steady', 'smooth', 'precise']
+        },
+        'en-UK': {
+            'excellent': ['Brilliant', 'Excellent', 'Superb', 'Splendid'],
+            'keep_going': ['Carry on', 'Well done', 'Keep going', 'Brilliant work'],
+            'control': ['controlled', 'steady', 'measured', 'precise']
+        },
+        'hi-IN': {
+            'excellent': ['Excellent', 'Bahut badhiya', 'Perfect', 'Outstanding'],
+            'keep_going': ['Keep going', 'Shabash', 'Very good', 'Well done'],
+            'control': ['controlled', 'steady', 'smooth', 'perfect']
+        }
+    }
+    
+    # Get appropriate phrases for language
+    phrases = language_phrases.get(voice_config['lang_code'], language_phrases['en-US'])
+    
+    # Context-aware fallback messages
+    if angle < 30:
+        messages = [
+            f"{random.choice(phrases['excellent'])} contraction! Hold that squeeze and control the descent.",
+            f"{random.choice(phrases['excellent'])} peak position! Now slowly lower with control.",
+            f"Great squeeze at the top! Focus on that {random.choice(phrases['control'])} negative.",
+            f"{random.choice(phrases['excellent'])} contraction! Feel those biceps working hard."
+        ]
+    elif angle > 170:
+        messages = [
+            f"Perfect extension! Now power up with {random.choice(phrases['control'])} strength.",
+            f"Great range of motion! Squeeze hard on the way up.",
+            f"{random.choice(phrases['excellent'])} stretch position! Keep those elbows stable.",
+            f"Beautiful extension! Now curl with focused power."
+        ]
+    elif 50 <= angle <= 120:
+        messages = [
+            f"You're in the power zone! Keep that {random.choice(phrases['control'])} control.",
+            f"Perfect working angle! Maintain that smooth rhythm.",
+            f"Great form in the active zone! Stay {random.choice(phrases['control'])}.",
+            f"{random.choice(phrases['excellent'])} technique! This is where strength builds."
+        ]
+    else:
+        # General motivational messages
+        base_messages = [
+            f"Fantastic form! {random.choice(phrases['keep_going'])} with that {random.choice(phrases['control'])} movement.",
+            f"Great work! Focus on smooth, {random.choice(phrases['control'])} reps.",
+            f"{random.choice(phrases['excellent'])} technique! You're building real strength.",
+            f"Outstanding effort! {random.choice(phrases['keep_going'])} with that steady rhythm."
+        ]
+        
+        # Add rep-specific encouragement
+        if reps >= 10:
+            messages = base_messages + [
+                f"Amazing! {reps} reps shows real dedication!",
+                f"Incredible endurance! {reps} strong reps completed!",
+                f"{random.choice(phrases['excellent'])}! You're crushing this workout!"
             ]
-        elif angle > 170:
-            feedback_options = [
-                "Great extension! You've got excellent range of motion. Now focus on a powerful but controlled curl up, engaging your core.",
-                "Perfect starting position! Your arm is fully extended. Squeeze those biceps hard as you bring the weight up with control.",
-                "Excellent stretch! This full range of motion is key for muscle development. Keep those elbows stable as you curl up.",
-                "Beautiful extension! You're maximizing your range of motion. Now power through that curl with steady controlled movement."
-            ]
-        elif 50 <= angle <= 120:
-            feedback_options = [
-                "You're in the power zone! This is where maximum muscle activation happens. Keep pushing through with steady control.",
-                "Perfect mid-range position! Your biceps are working their hardest right now. Focus on that smooth controlled movement.",
-                "Excellent technique in the working zone! This angle is ideal for muscle fiber recruitment. Stay strong and controlled.",
-                "Outstanding form! You're right in the sweet spot for bicep development. Maintain that steady rhythm and breathing pattern."
+        elif reps >= 5:
+            messages = base_messages + [
+                f"Solid progress! {reps} reps with great form!",
+                f"Halfway through and looking strong! {random.choice(phrases['keep_going'])}!",
+                f"Building momentum! Your form is {random.choice(phrases['excellent'])}!"
             ]
         else:
-            feedback_options = [
-                "Looking fantastic! Remember to control both the lifting and lowering phases for maximum effectiveness and muscle growth.",
-                "Great work with your form! Keep those elbows stable, core engaged, and focus on smooth controlled movements throughout.",
-                "Solid technique! You're building serious strength with that movement pattern. Keep the weight under control at all times.",
-                "Excellent progress! Your form is improving with each rep. Focus on steady breathing and controlled muscle engagement."
+            messages = base_messages + [
+                f"Strong start! Focus on perfect form.",
+                f"Great beginning! Establish that rhythm.",
+                f"{random.choice(phrases['excellent'])} foundation! Build on this form."
             ]
+    
+    return random.choice(messages)
+
+def get_rep_completion_message(reps, voice_config, ai_quota_exceeded=False):
+    """Get AI-generated rep completion message with multilingual fallback."""
+    
+    if ai_quota_exceeded:
+        return get_smart_rep_fallback(reps, voice_config)
+    
+    try:
+        context = f"""
+        You are an energetic fitness coach. The user just completed rep number {reps} of bicep curls.
+        Voice: {voice_config['name']} ({voice_config['language']})
+        Style: {voice_config.get('style', 'General')}
         
-        return random.choice(feedback_options)
+        Give a brief, enthusiastic congratulatory message (1 sentence, under 15 words).
+        Make it sound natural and motivating for continued effort.
+        Match the {voice_config.get('style', 'General')} style.
+        """
         
+        response = model.generate_content(context)
+        if response.text:
+            message = response.text.strip().replace('*', '').replace('#', '').replace('"', '')
+            return message
+        else:
+            return get_smart_rep_fallback(reps, voice_config)
+            
     except Exception as e:
-        print(f"AI coaching error: {e}")
-        return "Keep pushing! You're doing fantastic! Focus on controlled movements and proper form for the best results and muscle development."
+        if "quota" in str(e).lower() or "429" in str(e):
+            return get_smart_rep_fallback(reps, voice_config)
+        else:
+            print(f"AI message error: {e}")
+            return get_smart_rep_fallback(reps, voice_config)
+
+def get_smart_rep_fallback(reps, voice_config):
+    """Smart rep completion messages with language context."""
+    import random
+    
+    # Language-specific congratulations
+    lang_congrats = {
+        'en-US': ['Excellent', 'Great', 'Outstanding', 'Perfect', 'Awesome'],
+        'en-UK': ['Brilliant', 'Excellent', 'Superb', 'Well done', 'Splendid'],
+        'hi-IN': ['Excellent', 'Bahut accha', 'Perfect', 'Shabash', 'Very good'],
+        'zh-CN': ['Excellent', 'Great work', 'Perfect', 'Outstanding'],
+        'fr-FR': ['Excellent', 'Parfait', 'Très bien', 'Magnifique'],
+        'de-DE': ['Ausgezeichnet', 'Perfekt', 'Sehr gut', 'Excellent'],
+        'es-ES': ['Excelente', 'Perfecto', 'Muy bien', 'Outstanding'],
+        'it-IT': ['Eccellente', 'Perfetto', 'Molto bene', 'Fantastico']
+    }
+    
+    congrats = lang_congrats.get(voice_config['lang_code'], lang_congrats['en-US'])
+    
+    if reps == 1:
+        messages = [
+            f"{random.choice(congrats)}! First rep with perfect form!",
+            f"Great start! That's rep one in the books!",
+            f"Perfect! Building strength from rep one!"
+        ]
+    elif reps % 10 == 0:
+        messages = [
+            f"{random.choice(congrats)}! {reps} reps milestone reached!",
+            f"Incredible! That's {reps} strong reps completed!",
+            f"Amazing dedication! {reps} reps shows real commitment!"
+        ]
+    elif reps % 5 == 0:
+        messages = [
+            f"Fantastic! {reps} reps with {random.choice(congrats).lower()} form!",
+            f"Great milestone! {reps} reps of solid work!",
+            f"{random.choice(congrats)} progress! {reps} controlled reps!"
+        ]
+    else:
+        messages = [
+            f"Great work! That's rep {reps} completed!",
+            f"{random.choice(congrats)}! Rep {reps} with perfect form!",
+            f"Outstanding! {reps} reps of quality training!",
+            f"Perfect! Rep {reps} building real strength!"
+        ]
+    
+    return random.choice(messages)
 
 # ==============================================================================
 # MAIN GYM CLASS
 # ==============================================================================
-class VoiceGymLocal:
-    def __init__(self):
+class EnhancedVoiceGym:
+    def __init__(self, voice_config):
+        self.voice_config = voice_config
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
@@ -184,6 +646,15 @@ class VoiceGymLocal:
         self.last_feedback = 0
         self.last_rep = 0
         self.last_speech = 0
+        self.start_time = time.time()
+        self.ai_quota_exceeded = False  # Track AI quota status
+        
+        # Enhanced tracking
+        self.workout_stats = {
+            'peak_angles': [],
+            'rep_times': [],
+            'form_score': 100
+        }
         
         # Initialize camera
         self.cap = cv2.VideoCapture(0)
@@ -191,14 +662,13 @@ class VoiceGymLocal:
             print("❌ Cannot open camera!")
             raise SystemExit()
             
-        # Set camera properties
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
-        print("✅ Camera initialized!")
+        print("✅ Enhanced VoiceGym initialized!")
         
     def process_frame(self, frame):
-        """Process video frame for pose detection."""
+        """Process video frame for pose detection with AI feedback."""
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.pose.process(rgb)
         
@@ -213,7 +683,6 @@ class VoiceGymLocal:
             # Get arm points
             landmarks = results.pose_landmarks.landmark
             try:
-                # Using left arm for bicep curl detection
                 shoulder = [landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].x, 
                            landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].y]
                 elbow = [landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW].x, 
@@ -223,63 +692,90 @@ class VoiceGymLocal:
                 
                 angle = calculate_angle(shoulder, elbow, wrist)
                 current_time = time.time()
+                workout_duration = (current_time - self.start_time) / 60
                 
-                # Count reps
+                # Rep counting with improved logic
                 if angle > 160 and self.stage != "down":
                     self.stage = "down"
                 elif angle < 50 and self.stage == "down" and current_time - self.last_rep > 2.0:
                     self.stage = "up"
                     self.reps += 1
                     self.last_rep = current_time
+                    self.workout_stats['peak_angles'].append(angle)
+                    self.workout_stats['rep_times'].append(current_time)
                     
-                    # Only speak if enough time has passed since last speech (10 seconds)
-                    if current_time - self.last_speech > 10:
-                        rep_messages = [
-                            f"Fantastic! That's rep number {self.reps}! Your form is looking strong and controlled.",
-                            f"Excellent work! Rep {self.reps} completed! Keep that steady rhythm and controlled movement.",
-                            f"Great job! That's {self.reps} reps down! You're really building strength with each repetition.",
-                            f"Perfect! Rep {self.reps} in the books! Your biceps are getting a fantastic workout right now.",
-                            f"Outstanding! That's rep {self.reps}! Keep focusing on that controlled movement and proper form."
-                        ]
-                        
-                        rep_message = random.choice(rep_messages)
-                        print(f"✅ {rep_message}")
-                        speak_feedback(rep_message)
+                    # AI-generated rep completion message with fallback
+                    if current_time - self.last_speech > 8:  # 8 second cooldown
+                        rep_message = get_rep_completion_message(self.reps, self.voice_config, self.ai_quota_exceeded)
+                        print(f"✅ Rep {self.reps}: {rep_message}")
+                        speak_feedback(rep_message, self.voice_config)
                         self.last_speech = current_time
                     else:
-                        print(f"✅ Rep {self.reps}! (Voice feedback cooling down...)")
+                        print(f"✅ Rep {self.reps}! (Voice cooling down...)")
                 
-                # Coaching feedback every 20 seconds (increased gap)
+                # AI coaching feedback every 20 seconds with quota handling
                 if (current_time - self.last_feedback > 20 and 
-                    current_time - self.last_speech > 12):  # 12 seconds since last speech
+                    current_time - self.last_speech > 12):
                     
-                    tip = get_coaching_tip(angle, self.reps)
-                    if tip:
-                        print(f"💬 Coach: {tip}")
-                        speak_feedback(tip)
+                    ai_tip = get_ai_coaching_feedback(angle, self.reps, self.stage, 
+                                                    workout_duration, self.voice_config, self.ai_quota_exceeded)
+                    if ai_tip:
+                        coach_prefix = "🤖 AI Coach" if not self.ai_quota_exceeded else "💡 Smart Coach"
+                        print(f"{coach_prefix} ({self.voice_config['name']}): {ai_tip}")
+                        speak_feedback(ai_tip, self.voice_config)
                         self.last_feedback = current_time
                         self.last_speech = current_time
                 
-                # Add text overlay on video
+                # Enhanced UI overlay with multilingual support
                 h, w = frame.shape[:2]
                 
-                # Black background for text
-                cv2.rectangle(frame, (10, 10), (min(500, w-10), 120), (0,0,0), -1)
+                # Background for stats
+                cv2.rectangle(frame, (10, 10), (min(650, w-10), 170), (0,0,0), -1)
                 
-                # Main info
-                cv2.putText(frame, f'🏋️ VoiceGym - Bicep Curls', 
-                           (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-                cv2.putText(frame, f'Count: {self.reps} | Angle: {angle:.0f}° | Stage: {self.stage}', 
-                           (15, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+                # Title with language and voice info
+                cv2.putText(frame, f'🏋️ Enhanced VoiceGym - AI Coach: {self.voice_config["name"]}', 
+                           (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+                cv2.putText(frame, f'Language: {self.voice_config["language"]} | Style: {self.voice_config.get("style", "General")}', 
+                           (15, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100,255,255), 2)
                 
-                # Timing info
+                # Workout stats
+                cv2.putText(frame, f'Reps: {self.reps} | Angle: {angle:.0f}° | Stage: {self.stage}', 
+                           (15, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 2)
+                cv2.putText(frame, f'Duration: {workout_duration:.1f}min | Voice ID: {self.voice_config["voice_id"]}', 
+                           (15, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200,200,255), 2)
+                
+                # Voice status with multilingual indicator
                 time_since_speech = current_time - self.last_speech
                 if time_since_speech < 10:
-                    cv2.putText(frame, f'🔊 Voice cooldown: {10-time_since_speech:.1f}s', 
-                               (15, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,100,100), 2)
+                    status_color = (100, 100, 255)  # Blue for cooling down
+                    status_text = f'🔊 Voice cooldown: {10-time_since_speech:.1f}s'
                 else:
-                    cv2.putText(frame, '', 
-                               (15, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,255,100), 2)
+                    status_color = (100, 255, 100)  # Green for ready
+                    status_text = '🔊 AI Coach ready'
+                    
+                cv2.putText(frame, status_text, (15, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.45, status_color, 2)
+                
+                # Form indicator
+                if 40 <= angle <= 60 or 150 <= angle <= 170:
+                    form_status = "✅ Perfect Form!"
+                    form_color = (0, 255, 0)
+                elif 30 <= angle <= 70 or 140 <= angle <= 180:
+                    form_status = "⚠️  Good Form"
+                    form_color = (0, 255, 255)
+                else:
+                    form_status = "⚡ Keep Focus"
+                    form_color = (0, 165, 255)
+                
+                cv2.putText(frame, form_status, (15, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.5, form_color, 2)
+                
+                # Language-specific motivational indicator
+                lang_flag = {
+                    'en-US': '🇺🇸', 'en-UK': '🇬🇧', 'hi-IN': '🇮🇳', 'zh-CN': '🇨🇳',
+                    'fr-FR': '🇫🇷', 'de-DE': '🇩🇪', 'es-ES': '🇪🇸', 'it-IT': '🇮🇹'
+                }.get(self.voice_config['lang_code'], '🌍')
+                
+                cv2.putText(frame, f'{lang_flag} Multilingual Coach Active', (15, 155), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 200, 100), 2)
                 
             except Exception as e:
                 print(f"Pose processing error: {e}")
@@ -287,19 +783,44 @@ class VoiceGymLocal:
         return frame
     
     def run(self):
-        """Main workout loop."""
-        print("🎥 Starting VoiceGym...")
-        print("🏋️ Position yourself in front of the camera and start doing bicep curls!")
+        """Main enhanced workout loop with multilingual support."""
+        print("🎥 Starting Enhanced VoiceGym with Multilingual AI Coach...")
+        print(f"🎤 Voice: {self.voice_config['name']} ({self.voice_config['language']})")
+        print(f"🎭 Style: {self.voice_config.get('style', 'General')}")
+        print(f"🆔 Voice ID: {self.voice_config['voice_id']}")
+        print("🏋️ Position yourself for bicep curls and let the AI coach guide you!")
         print("📱 Press 'q' to quit or ESC to exit")
-        print("=" * 60)
+        print("=" * 70)
         
         frame_count = 0
-        start_time = time.time()
         
-        # Initial motivation
-        initial_message = "Welcome to VoiceGym! Position yourself in front of the camera and start your bicep curl workout. I'll guide you through proper form!"
-        print(f"🎯 {initial_message}")
-        speak_feedback(initial_message)
+        # Multilingual welcome messages
+        welcome_messages = {
+            'en-US': f"Welcome to your AI-powered workout! I'm {self.voice_config['name']}, your virtual fitness coach. Let's build strength together with perfect bicep curls!",
+            'en-UK': f"Welcome to your personalised fitness session! I'm {self.voice_config['name']}, ready to guide your bicep curl workout. Let's achieve excellence together!",
+            'hi-IN': f"Welcome to your AI fitness session! I'm {self.voice_config['name']}, your virtual coach. Let's do perfect bicep curls together!",
+            'zh-CN': f"Welcome to your AI fitness training! I'm {self.voice_config['name']}, your virtual coach. Let's do excellent bicep curls together!",
+            'fr-FR': f"Welcome to your AI fitness session! I'm {self.voice_config['name']}, your virtual coach. Let's do perfect bicep curls together!",
+            'de-DE': f"Welcome to your AI fitness training! I'm {self.voice_config['name']}, your virtual coach. Let's do excellent bicep curls together!",
+            'es-ES': f"Welcome to your AI fitness session! I'm {self.voice_config['name']}, your virtual coach. Let's do perfect bicep curls together!",
+            'it-IT': f"Welcome to your AI fitness training! I'm {self.voice_config['name']}, your virtual coach. Let's do excellent bicep curls together!"
+        }
+        
+        welcome_msg = welcome_messages.get(
+            self.voice_config['lang_code'], 
+            f"Welcome to your AI-powered workout! I'm {self.voice_config['name']}, your virtual fitness coach. Let's build strength together!"
+        )
+        
+        print(f"🎯 {welcome_msg}")
+        
+        # Test voice with welcome message
+        success = speak_feedback(welcome_msg, self.voice_config)
+        if not success:
+            print(f"⚠️  Voice synthesis had issues with {self.voice_config['name']}, but workout will continue with visual feedback.")
+            print(f"🔧 Voice ID used: {self.voice_config['voice_id']}")
+            print(f"🌍 Language Code: {self.voice_config['lang_code']}")
+        else:
+            print(f"✅ Voice test successful with {self.voice_config['name']}!")
         
         while True:
             ret, frame = self.cap.read()
@@ -308,93 +829,100 @@ class VoiceGymLocal:
                 print("❌ Failed to grab frame from camera")
                 break
             
-            # Flip frame horizontally for mirror effect
             frame = cv2.flip(frame, 1)
             
-            # Process frame for pose detection
             try:
                 processed_frame = self.process_frame(frame)
-                
-                # Display the frame
-                cv2.imshow('🏋️ VoiceGym Coach - Press Q to Quit', processed_frame)
+                window_title = f'🏋️ Enhanced VoiceGym - {self.voice_config["language"]} Coach (Press Q to Quit)'
+                cv2.imshow(window_title, processed_frame)
                 
                 frame_count += 1
                 
-                # Stats every 5 seconds
-                if frame_count % 150 == 0:  # ~5 seconds at 30fps
-                    elapsed = time.time() - start_time
-                    print(f"📊 Workout Stats: {self.reps} reps completed in {elapsed/60:.1f} minutes")
+                # Periodic stats with language info
+                if frame_count % 300 == 0:  # Every ~10 seconds
+                    elapsed = (time.time() - self.start_time) / 60
+                    print(f"📊 Workout Stats: {self.reps} reps in {elapsed:.1f}min")
+                    print(f"🎤 AI Coach: {self.voice_config['name']} ({self.voice_config['language']})")
+                    print(f"🎭 Style: {self.voice_config.get('style', 'General')}")
                     
             except Exception as e:
                 print(f"Frame processing error: {e}")
-                cv2.imshow('🏋️ VoiceGym Coach - Press Q to Quit', frame)
+                cv2.imshow(f'🏋️ Enhanced VoiceGym - {self.voice_config["language"]} Coach (Press Q to Quit)', frame)
             
             # Check for quit
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q') or key == 27:  # 'q' or ESC
+            if key == ord('q') or key == 27:
                 break
         
-        # Cleanup
+        # Cleanup and multilingual final summary
         self.cap.release()
         cv2.destroyAllWindows()
-        pygame.mixer.quit()
         
-        # Final workout summary
-        elapsed = time.time() - start_time
-        final_message = f"Workout complete! You did {self.reps} bicep curls in {elapsed/60:.1f} minutes. Great job building strength today!"
+        elapsed = (time.time() - self.start_time) / 60
+        
+        # AI-generated workout summary with multilingual context
+        try:
+            if not self.ai_quota_exceeded:
+                summary_context = f"""
+                Generate a brief, encouraging workout completion message for a {self.voice_config['language']} speaker. 
+                The user completed {self.reps} bicep curls in {elapsed:.1f} minutes.
+                Voice: {self.voice_config['name']} ({self.voice_config['language']})
+                Style: {self.voice_config.get('style', 'General')}
+                Keep it under 20 words and motivational.
+                Match the {self.voice_config.get('style', 'General')} style.
+                """
+                
+                response = model.generate_content(summary_context)
+                if response.text:
+                    final_message = response.text.strip().replace('*', '').replace('#', '').replace('"', '')
+                else:
+                    final_message = f"Fantastic workout! {self.reps} reps in {elapsed:.1f} minutes. You're building real strength with {self.voice_config['name']}!"
+            else:
+                final_message = f"Amazing job! {self.reps} bicep curls completed in {elapsed:.1f} minutes. Keep up the great work!"
+                
+        except Exception as e:
+            if "quota" in str(e).lower() or "429" in str(e):
+                self.ai_quota_exceeded = True
+            
+            # Language-specific completion messages
+            completion_messages = {
+                'en-US': f"Outstanding workout! {self.reps} reps in {elapsed:.1f} minutes. Excellent strength building session!",
+                'en-UK': f"Brilliant workout! {self.reps} reps in {elapsed:.1f} minutes. Superb strength training session!",
+                'hi-IN': f"Excellent workout! {self.reps} reps in {elapsed:.1f} minutes. Bahut accha strength building!",
+                'zh-CN': f"Great workout! {self.reps} reps in {elapsed:.1f} minutes. Excellent strength training!",
+                'fr-FR': f"Excellent workout! {self.reps} reps in {elapsed:.1f} minutes. Magnifique strength session!",
+                'de-DE': f"Ausgezeichnet workout! {self.reps} reps in {elapsed:.1f} minutes. Perfect strength training!",
+                'es-ES': f"Excelente workout! {self.reps} reps in {elapsed:.1f} minutes. Muy bien strength session!",
+                'it-IT': f"Eccellente workout! {self.reps} reps in {elapsed:.1f} minutes. Fantastico strength training!"
+            }
+            
+            final_message = completion_messages.get(
+                self.voice_config['lang_code'],
+                f"Outstanding workout! {self.reps} reps in {elapsed:.1f} minutes. Excellent session!"
+            )
+        
         print(f"🏁 {final_message}")
-        speak_feedback(final_message)
+        print(f"🌍 Completed with {self.voice_config['name']} ({self.voice_config['language']})")
+        speak_feedback(final_message, self.voice_config)
         
         # Keep program alive for final speech
-        time.sleep(8)
-
-def get_coaching_tip(angle, reps):
-    """Get detailed coaching feedback based on arm position."""
-    try:
-        if angle < 30:
-            feedback_options = [
-                "Incredible contraction! You're really squeezing those biceps at the top. Keep that controlled movement going and focus on the slow descent for maximum muscle activation.",
-                "Excellent squeeze at the peak! This is where the real muscle building happens. Control that negative movement slowly for maximum gains and strength development.",
-                "Perfect form at the top! Your biceps are fully engaged right now. Remember to breathe steadily and control the weight down slowly for optimal results.",
-                "Outstanding peak contraction! You're targeting those muscle fibers perfectly. Keep that controlled tempo throughout the entire movement for best results."
-            ]
-        elif angle > 170:
-            feedback_options = [
-                "Great extension! You've got excellent range of motion there. Now focus on a powerful but controlled curl up, engaging your core for stability.",
-                "Perfect starting position! Your arm is fully extended beautifully. Squeeze those biceps hard as you bring the weight up with complete control.",
-                "Excellent stretch! This full range of motion is absolutely key for muscle development. Keep those elbows stable as you curl up powerfully.",
-                "Beautiful extension! You're maximizing your range of motion perfectly. Now power through that curl with steady controlled movement and focus."
-            ]
-        elif 50 <= angle <= 120:
-            feedback_options = [
-                "You're in the power zone! This is where maximum muscle activation happens. Keep pushing through with steady control and proper breathing.",
-                "Perfect mid-range position! Your biceps are working their hardest right now. Focus on that smooth controlled movement and muscle engagement.",
-                "Excellent technique in the working zone! This angle is ideal for muscle fiber recruitment. Stay strong, controlled, and keep that rhythm going.",
-                "Outstanding form! You're right in the sweet spot for bicep development. Maintain that steady rhythm and proper breathing pattern throughout."
-            ]
-        else:
-            feedback_options = [
-                "Looking fantastic! Remember to control both the lifting and lowering phases for maximum effectiveness and optimal muscle growth.",
-                "Great work with your form! Keep those elbows stable, core engaged, and focus on smooth controlled movements throughout each repetition.",
-                "Solid technique! You're building serious strength with that movement pattern. Keep the weight under complete control at all times.",
-                "Excellent progress! Your form is improving with each rep. Focus on steady breathing and controlled muscle engagement for best results."
-            ]
-        
-        return random.choice(feedback_options)
-        
-    except Exception as e:
-        print(f"AI coaching error: {e}")
-        return "Keep pushing! You're doing fantastic! Focus on controlled movements and proper form for the best results and optimal muscle development."
+        time.sleep(6)
+        pygame.mixer.quit()
 
 # ==============================================================================
 # MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
     try:
-        print("🚀 Starting VoiceGym Coach...")
-        print("=" * 60)
+        print("🚀 Enhanced VoiceGym Coach with Multilingual AI Feedback")
+        print("🌍 Supporting English, Hindi, Chinese, French, German, Spanish & Italian")
+        print("=" * 70)
         
-        gym = VoiceGymLocal()
+        # Get voice preferences with multilingual support
+        voice_config = get_voice_settings()
+        
+        # Start enhanced multilingual workout
+        gym = EnhancedVoiceGym(voice_config)
         gym.run()
         
     except KeyboardInterrupt:
@@ -406,4 +934,4 @@ if __name__ == "__main__":
     finally:
         cv2.destroyAllWindows()
         pygame.mixer.quit()
-        print("🏁 VoiceGym Coach session ended!")
+        print("🏁 Enhanced Multilingual VoiceGym Coach session ended!")
