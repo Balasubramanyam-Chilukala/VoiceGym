@@ -48,13 +48,12 @@ This enhanced version transforms your webcam into an intelligent multilingual pe
 - Python 3.8 - 3.10 (recommended)
 - Webcam/camera device
 - Internet connection (for AI and voice APIs)
-- Microphone permissions (optional, for voice commands)
 
 ### ⚙️ Installation & Setup
 
 1. **Clone or Download the Repository:**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/Balasubramanyam-Chilukala/VoiceGym.git
    cd VoiceGym
    ```
 
