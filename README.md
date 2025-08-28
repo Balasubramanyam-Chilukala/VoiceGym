@@ -1,4 +1,4 @@
-# Enhanced VoiceGym: Multilingual AI Personal Trainer
+# VoiceGym: Multilingual AI Personal Trainer
 
 > A real-time, multilingual voice-enabled AI fitness coach that runs entirely on your local machine. Features 8 languages, 20+ voice personalities, intelligent pose detection, and dynamic AI coaching feedback for bicep curl workouts.
 
