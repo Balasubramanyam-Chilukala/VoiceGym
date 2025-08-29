@@ -1,61 +1,61 @@
-# VoiceGym: Multilingual AI Personal Trainer
+# VoiceGym: Multilingual AI Personal Trainer with Murf SDK Integration
 
-> A real-time, multilingual voice-enabled AI fitness coach that runs entirely on your local machine. Features 8 languages, 20+ voice personalities, intelligent pose detection, and dynamic AI coaching feedback for bicep curl workouts.
+A real-time, multilingual voice-enabled AI fitness coach powered by **Gemini AI**, **Murf SDK Translation**, and **Murf TTS API**. Features intelligent pose detection, dynamic AI coaching feedback, and authentic multilingual voice synthesis for bicep curl workouts.
 
-This enhanced version transforms your webcam into an intelligent multilingual personal trainer, offering natural voice coaching in English (US/UK), Hindi, Chinese, French, German, Spanish, and Italian. It demonstrates the future of accessible, AI-driven home fitness with comprehensive voice personality options.
+This enhanced version transforms your webcam into an intelligent multilingual personal trainer using the **official Murf Python SDK** for seamless translation and voice generation. Experience the future of accessible, AI-driven home fitness with comprehensive voice personality options.
 
 ## 🌟 Key Features
 
 ### 🌍 Multilingual Support
-- **8 Languages:** English (US/UK), Hindi, Chinese (Mandarin), French, German, Spanish, Italian
-- **10+ Voice Personalities:** Choose from male/female voices with different styles (Conversational, Promo, General)
-- **Dynamic Voice Menu:** Interactive selection system with language-specific voice descriptions
-- **Real-time API Integration:** Fetches live voice options from Murf AI API
+- **6 Languages**: English (US), Hindi, Chinese (Mandarin), French, German, Spanish
+- **25+ Voice Personalities**: Choose from male/female voices with authentic accents
+- **Murf SDK Integration**: Official Murf Python SDK for reliable translation
+- **Real-time Translation Pipeline**: Gemini AI → Murf Translation → Murf TTS → Audio
 
 ### 🤖 Advanced AI Coaching
-- **Context-Aware Feedback:** AI analyzes your current angle, rep count, workout duration, and stage
-- **Language-Specific Coaching Style:** Adapts coaching tone and approach based on selected language/voice
-- **Smart Fallback System:** Continues with intelligent coaching even if AI quota is exceeded
-- **Dynamic Rep Celebrations:** AI-generated congratulations for milestone achievements
+- **Gemini AI-Powered Feedback**: Context-aware coaching with intelligent fallbacks
+- **Dynamic Translation**: Real-time English-to-target-language conversion
+- **Native Voice Synthesis**: Authentic multilingual voices via Murf TTS API
+- **Smart Pipeline Management**: Handles API failures gracefully with manual translations
 
 ### 🏋️ Enhanced Workout Features
-- **Improved Rep Detection:** More accurate counting with 2-second cooldown to prevent double counting
-- **Form Analysis:** Real-time angle feedback with perfect form indicators
-- **Workout Statistics:** Tracks peak angles, rep timing, and form scores
-- **Voice Cooldown Management:** Prevents audio overlap with intelligent spacing
+- **Intelligent Rep Detection**: Accurate counting with pose angle analysis
+- **Form Analysis**: Real-time angle feedback (160° down, 50° up thresholds)
+- **Workout Statistics**: Comprehensive tracking of reps, duration, and API usage
+- **Pipeline Analytics**: Monitor Gemini calls, translations, and TTS generation
 
 ### 🎨 Rich Visual Interface
-- **Multilingual UI:** Display shows selected language, voice personality, and coaching status
-- **Real-time Stats:** Comprehensive overlay with reps, angles, duration, and voice information
-- **Form Quality Indicators:** Visual feedback for perfect form, good form, and focus zones
-- **Language Flags:** Visual indicators showing active coaching language
+- **Pipeline Status Display**: Shows Gemini AI → Murf Translation → Murf TTS flow
+- **Real-time Stats**: API usage tracking and pipeline performance metrics
+- **Multilingual UI**: Language-specific voice information and coaching status
+- **Error Resilience**: Visual feedback for API status and fallback activations
 
 ## 🛠️ Technology Stack
 
 | Component | Technology / Library |
 |-----------|---------------------|
-| **Language** | Python 3.8+ |
-| **Computer Vision** | OpenCV, MediaPipe |
-| **AI Coaching Engine** | Google Gemini API (with smart fallbacks) |
-| **Voice Synthesis** | Murf AI API (comprehensive voice library) |
-| **Audio Management** | Pygame (with async threading) |
-| **Environment** | python-dotenv for secure API key management |
+| Language | Python 3.8+ |
+| Computer Vision | OpenCV, MediaPipe |
+| AI Coaching Engine | Google Gemini API |
+| Translation | **Murf Python SDK** |
+| Voice Synthesis | **Murf TTS API** |
+| Audio Management | Pygame (with threading) |
+| Environment | python-dotenv |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - Python 3.8 - 3.10 (recommended)
 - Webcam/camera device
-- Internet connection (for AI and voice APIs)
+- Internet connection (for AI and Murf APIs)
 
 ### ⚙️ Installation & Setup
 
-1. **Clone or Download the Repository:**
-   ```bash
-   git clone https://github.com/Balasubramanyam-Chilukala/VoiceGym.git
-   cd VoiceGym
-   ```
+1. **Clone the Repository:**
+```bash
+git clone https://github.com/Balasubramanyam-Chilukala/VoiceGym.git
+cd VoiceGym
+```
 
 2. **Set Up Virtual Environment:**
    ```bash
@@ -104,9 +104,9 @@ This enhanced version transforms your webcam into an intelligent multilingual pe
    ```
 
 3. **Select Your AI Coach:**
-   - Choose from 8 languages and 10+ voice personalities
+   - Choose from 6 languages and 25+ voice personalities
    - Interactive menu shows voice descriptions and styles
-   - System fetches real-time voice options from Murf API
+   - System uses Murf SDK for reliable voice selection
 
 4. **Start Your Workout:**
    - Position yourself so the camera can see your upper body
@@ -126,21 +126,21 @@ This enhanced version transforms your webcam into an intelligent multilingual pe
 - **Ruby (UK)** - Conversational British (supports German)
 
 ### International Options
-- **Hindi:** Amit (Male), Ayushi (Female)
-- **Chinese:** Tao (Male), Jiao (Female)
-- **French:** Adélie (Female)
-- **German:** Matthias (Male)
-- **Spanish:** Javier (Male), Elvira (Female)
+- **Hindi:**  Rahul, Amit, Kabir (Male), Shweta, Ayushi (Female) 
+- **Chinese:** Zhang, Tao (Male), Jiao, Wei (Female)
+- **French:** Maxime, Louis (Male), Adélie, Justine (Female)
+- **German:** Matthias, Ralf (Male), Josephine, Lia (Female)
+- **Spanish:** Javier (Male), Elvira, Carmen (Female)
 - **Italian:** Lorenzo (Male), Greta (Female)
 
 ## 🔧 Advanced Features
 
 ### AI Coaching Intelligence
 - **Context Awareness:** Analyzes current exercise phase, form quality, and progress
-- **Adaptive Feedback:** Adjusts coaching style based on selected voice personality
-- **Progress Tracking:** Monitors workout duration, rep consistency, and form improvements
-- **Motivational Milestones:** Special encouragement for rep achievements (5, 10, 15+ reps)
-
+- **Murf SDK Translation:** Official SDK translates English to target language
+- **Murf TTS Synthesis:** Authentic voice generation with selected personality
+- **Audio Playback:** High-quality multilingual coaching delivery
+- 
 ### Smart Fallback System
 - **Quota Management:** Automatically switches to intelligent fallback coaching if AI limits are reached
 - **Language-Aware Fallbacks:** Maintains language-appropriate motivational phrases
@@ -186,7 +186,6 @@ The system tracks comprehensive workout metrics:
 | French | 1 | Very Good | Full Support | ✅ Complete |
 | German | 1 | Very Good | Full Support | ✅ Complete |
 | Spanish | 2 | Very Good | Full Support | ✅ Complete |
-| Italian | 2 | Very Good | Full Support | ✅ Complete |
 
 
 ## 📄 License
