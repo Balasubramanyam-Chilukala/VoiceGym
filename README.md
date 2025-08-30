@@ -49,12 +49,7 @@ A revolutionary fitness application that combines computer vision, artificial in
    cd voicegym
    ```
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set up PostgreSQL database**
+2. **Set up PostgreSQL database**
    
    **For Linux (Ubuntu/Debian):**
    ```bash
@@ -96,7 +91,7 @@ A revolutionary fitness application that combines computer vision, artificial in
    5. Right-click on "Login/Group Roles" → "Create" → "Login/Group Role"
    6. Name: `voiceuser`, set password, grant privileges
 
-4. **Configure environment variables**
+3. **Configure environment variables**
    Create a `.env` file in the root directory:
    ```env
    # API Keys
@@ -111,7 +106,7 @@ A revolutionary fitness application that combines computer vision, artificial in
    POSTGRES_PASSWORD=yourpassword
    ```
 
-5. **Run the application**
+4. **Run the application**
    ```bash
    python temp.py
    ```
