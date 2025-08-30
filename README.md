@@ -45,7 +45,7 @@ A revolutionary fitness application that combines computer vision, artificial in
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/voicegym.git
+   git clone https://github.com/Balasubramanyam-Chilukala/VoiceGym.git
    cd voicegym
    ```
 
