@@ -108,7 +108,7 @@ A revolutionary fitness application that combines computer vision, artificial in
 
 4. **Run the application**
    ```bash
-   python temp.py
+   python voicegym.py
    ```
 
 ## Usage
