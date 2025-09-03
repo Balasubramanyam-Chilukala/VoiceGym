@@ -105,8 +105,12 @@ A revolutionary fitness application that combines computer vision, artificial in
    POSTGRES_USER=voiceuser
    POSTGRES_PASSWORD=yourpassword
    ```
+4. **Command for Installing packages**
+  ```bash
+   pip install opencv-python mediapipe numpy requests google-generativeai pygame python-dotenv psycopg2-binary matplotlib pathlib
+   ```
 
-4. **Run the application**
+5. **Run the application**
    ```bash
    python voicegym.py
    ```
